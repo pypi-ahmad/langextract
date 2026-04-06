@@ -1,0 +1,13 @@
+{
+    "provider": "gemini",
+    "model": "gemini-2.5-flash",
+    "fetch_urls": true,
+    "backends": {
+        "readable_pdf": "auto",
+        "scanned_pdf": "paddleocr",
+        "image": "paddleocr",
+        "docx": "python-docx",
+        "html": "trafilatura",
+        "url": "trafilatura"
+    }
+}

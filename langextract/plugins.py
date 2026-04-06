@@ -26,19 +26,25 @@ from importlib import metadata
 from absl import logging
 
 from langextract.core import base_model
+from langextract.providers import backends as provider_backends
 
 __all__ = ["available_providers", "get_provider_class"]
 
+
+def _provider_map(optional_dependency: bool) -> dict[str, str]:
+  """Build a name -> target map for built-in provider families."""
+  return {
+      backend.family.value: backend.target
+      for backend in provider_backends.list_builtin_provider_backends()
+      if backend.optional_dependency is optional_dependency
+  }
+
+
 # Static mapping for built-in providers (always available)
-_BUILTINS: dict[str, str] = {
-    "gemini": "langextract.providers.gemini:GeminiLanguageModel",
-    "ollama": "langextract.providers.ollama:OllamaLanguageModel",
-}
+_BUILTINS: dict[str, str] = _provider_map(optional_dependency=False)
 
 # Optional built-in providers (require extra dependencies)
-_OPTIONAL_BUILTINS: dict[str, str] = {
-    "openai": "langextract.providers.openai:OpenAILanguageModel",
-}
+_OPTIONAL_BUILTINS: dict[str, str] = _provider_map(optional_dependency=True)
 
 
 def _safe_entry_points(group: str) -> list:

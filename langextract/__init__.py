@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""LangExtract: Extract structured information from text with LLMs.
+"""LangExtract: unified extraction API with optional advanced configuration.
 
-This package provides the main extract and visualize functions,
-with lazy loading for other submodules accessed via attribute access.
+The top-level package exposes one primary high-level entry point,
+``langextract.extract()``, plus a small set of convenience data/config types so
+simple extraction flows do not require importing multiple submodules.
 """
 
 from __future__ import annotations
@@ -25,12 +26,42 @@ import sys
 from typing import Any, Dict
 
 from langextract import visualization
-from langextract.extraction import extract as extract_func
+from langextract.core.data import AnnotatedDocument
+from langextract.core.data import Document
+from langextract.core.data import ExampleData
+from langextract.core.data import Extraction
+from langextract.core.data import FormatType
+from langextract.extraction import extract
+from langextract.extraction import ExtractionOptions
+from langextract.extraction import ExtractResult
+from langextract.extraction import IngestionOptions
+from langextract.extraction import load_extraction_config
+from langextract.extraction import OcrOptions
+from langextract.extraction import parse_extraction_config
+from langextract.extraction import ParserBackendOptions
+from langextract.ingestion_backends import BackendCategoryInfo
+from langextract.ingestion_backends import BackendOptionInfo
+from langextract.ingestion_backends import list_available_backends
 
 __all__ = [
-    # Public convenience functions (thin wrappers)
+    # Primary high-level API
     "extract",
     "visualize",
+    "AnnotatedDocument",
+    "Document",
+    "ExampleData",
+    "Extraction",
+    "ExtractionOptions",
+    "ExtractResult",
+    "FormatType",
+    "IngestionOptions",
+    "BackendCategoryInfo",
+    "BackendOptionInfo",
+    "OcrOptions",
+    "ParserBackendOptions",
+    "list_available_backends",
+    "load_extraction_config",
+    "parse_extraction_config",
     # Submodules exposed lazily on attribute access for ergonomics:
     "annotation",
     "data",
@@ -41,6 +72,8 @@ __all__ = [
     "resolver",
     "prompting",
     "io",
+    "ingestion",
+    "ingestion_backends",
     "visualization",
     "exceptions",
     "core",
@@ -48,11 +81,6 @@ __all__ = [
 ]
 
 _CACHE: Dict[str, Any] = {}
-
-
-def extract(*args: Any, **kwargs: Any):
-  """Top-level API: lx.extract(...)."""
-  return extract_func(*args, **kwargs)
 
 
 def visualize(*args: Any, **kwargs: Any):
@@ -70,7 +98,10 @@ _LAZY_MODULES = {
     "exceptions": "langextract.exceptions",
     "factory": "langextract.factory",
     "inference": "langextract.inference",
+    "ingestion": "langextract.ingestion",
+    "ingestion_backends": "langextract.ingestion_backends",
     "io": "langextract.io",
+    "ocr": "langextract.ocr",
     "progress": "langextract.progress",
     "prompting": "langextract.prompting",
     "providers": "langextract.providers",

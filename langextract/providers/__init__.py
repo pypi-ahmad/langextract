@@ -31,6 +31,7 @@ from langextract.providers import router
 registry = router  # Backward compat alias
 
 __all__ = [
+    "backends",
     "gemini",
     "openai",
     "ollama",
@@ -50,14 +51,12 @@ def load_builtins_once() -> None:
   """Load built-in providers to register their patterns.
 
   Idempotent function that ensures provider patterns are available
-  for model resolution. Uses lazy registration to ensure providers
-  can be re-registered after registry.clear() even if their modules
-  are already in sys.modules.
+  for model resolution. We intentionally attempt lazy registration on
+  every call because router.register_lazy() already de-duplicates entries,
+  and tests may call router.clear() without resetting the provider module
+  flags.
   """
   global _builtins_loaded  # pylint: disable=global-statement
-
-  if _builtins_loaded:
-    return
 
   # Register built-ins lazily so they can be re-registered after a registry.clear()
   # even if their modules were already imported earlier in the test run.
@@ -151,7 +150,9 @@ def _reset_for_testing() -> None:
 
 def __getattr__(name: str):
   """Lazy loading for submodules."""
-  if name == "router":
+  if name == "backends":
+    return importlib.import_module("langextract.providers.backends")
+  elif name == "router":
     return importlib.import_module("langextract.providers.router")
   elif name == "schemas":
     return importlib.import_module("langextract.providers.schemas")

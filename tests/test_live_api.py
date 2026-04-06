@@ -36,13 +36,14 @@ import google.genai.errors
 import pytest
 
 from langextract import data
+from langextract import factory
 import langextract as lx
 from langextract.core import tokenizer as tokenizer_lib
 from langextract.providers import gemini_batch as gb
 
 dotenv.load_dotenv(override=True)
 
-DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+DEFAULT_GEMINI_MODEL = factory.DEFAULT_MODEL_ID
 DEFAULT_OPENAI_MODEL = "gpt-4o"
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") or os.environ.get(

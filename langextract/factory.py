@@ -29,7 +29,13 @@ import warnings
 from langextract import providers
 from langextract.core import base_model
 from langextract.core import exceptions
+from langextract.providers import backends as provider_backends
 from langextract.providers import router
+
+ProviderFamily = provider_backends.ProviderFamily
+ProviderSelection = provider_backends.ProviderSelection
+BuiltinProviderBackend = provider_backends.BuiltinProviderBackend
+DEFAULT_MODEL_ID = provider_backends.DEFAULT_GEMINI_MODEL_ID
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
@@ -37,67 +43,86 @@ class ModelConfig:
   """Configuration for instantiating a language model provider.
 
   Attributes:
-    model_id: The model identifier (e.g., "gemini-2.5-flash", "gpt-4o").
-    provider: Optional explicit provider name or class name. Use this to
-      disambiguate when multiple providers support the same model_id.
+    model_id: The model identifier (e.g., "gemini-3-flash-preview", "gpt-4o").
+    provider: Optional explicit provider family, provider name, or class name.
+      Use this to disambiguate when multiple providers support the same
+      model_id or to force a backend family explicitly. Built-in Gemini and
+      OpenAI selections have default model IDs when omitted; built-in Ollama
+      selections still require an explicit model_id.
     provider_kwargs: Optional provider-specific keyword arguments.
   """
 
   model_id: str | None = None
-  provider: str | None = None
+  provider: ProviderSelection | None = None
   provider_kwargs: dict[str, typing.Any] = dataclasses.field(
       default_factory=dict
   )
 
+  @property
+  def provider_family(self) -> ProviderFamily | None:
+    """Built-in provider family inferred from provider/model selection."""
+    return provider_backends.resolve_provider_family(
+        model_id=self.model_id,
+        provider=self.provider,
+    )
+
+
+def _resolve_builtin_backend(
+    model_id: str | None,
+    provider: ProviderSelection | None = None,
+) -> BuiltinProviderBackend | None:
+  """Resolve built-in backend metadata for a provider/model pair."""
+  return provider_backends.match_provider_backend(
+      model_id=model_id,
+      provider=provider,
+  )
+
 
 def _kwargs_with_environment_defaults(
-    model_id: str, kwargs: dict[str, typing.Any]
+    model_id: str | None,
+    kwargs: dict[str, typing.Any],
+    provider: ProviderSelection | None = None,
 ) -> dict[str, typing.Any]:
   """Add environment-based defaults to provider kwargs.
 
   Args:
     model_id: The model identifier.
     kwargs: Existing keyword arguments.
+    provider: Optional explicit provider family/name/class.
 
   Returns:
     Updated kwargs with environment defaults.
   """
   resolved = dict(kwargs)
+  backend = _resolve_builtin_backend(model_id, provider)
+  if backend is None:
+    return resolved
 
-  if "api_key" not in resolved and not resolved.get("vertexai", False):
-    model_lower = model_id.lower()
-    env_vars_by_provider = {
-        "gemini": ("GEMINI_API_KEY", "LANGEXTRACT_API_KEY"),
-        "gpt": ("OPENAI_API_KEY", "LANGEXTRACT_API_KEY"),
-    }
-
-    for provider_prefix, env_vars in env_vars_by_provider.items():
-      if provider_prefix in model_lower:
-        found_keys = []
-        for env_var in env_vars:
-          key_val = os.getenv(env_var)
-          if key_val:
-            found_keys.append((env_var, key_val))
-
-        if found_keys:
-          resolved["api_key"] = found_keys[0][1]
-
-          if len(found_keys) > 1:
-            keys_list = ", ".join(k[0] for k in found_keys)
-            warnings.warn(
-                f"Multiple API keys detected in environment: {keys_list}. "
-                f"Using {found_keys[0][0]} and ignoring others.",
-                UserWarning,
-                stacklevel=3,
-            )
-        break
-
-  if "ollama" in model_id.lower() and "base_url" not in resolved:
-    resolved["base_url"] = os.getenv(
-        "OLLAMA_BASE_URL", "http://localhost:11434"
+  resolved, found_env_vars = backend.apply_environment_defaults(resolved)
+  if len(found_env_vars) > 1 and "api_key" in resolved:
+    keys_list = ", ".join(found_env_vars)
+    warnings.warn(
+        f"Multiple API keys detected in environment: {keys_list}. "
+        f"Using {found_env_vars[0]} and ignoring others.",
+        UserWarning,
+        stacklevel=3,
     )
 
   return resolved
+
+
+def _effective_model_id(config: ModelConfig) -> str | None:
+  """Return the effective model id after applying built-in defaults."""
+  backend = provider_backends.get_provider_backend(config.provider)
+  if backend is None:
+    return config.model_id
+
+  model_id = backend.resolve_model_id(config.model_id)
+  if model_id is None and backend.requires_explicit_model_id:
+    raise exceptions.InferenceConfigError(
+        f"Provider {backend.family.value!r} requires an explicit model_id."
+    )
+  return model_id
 
 
 def create_model(
@@ -154,10 +179,12 @@ def create_model(
         f"Check that all required packages are installed. Error: {e}"
     ) from e
 
-  model_id = config.model_id
+  model_id = _effective_model_id(config)
 
   kwargs = _kwargs_with_environment_defaults(
-      model_id or config.provider or "", config.provider_kwargs
+      model_id,
+      config.provider_kwargs,
+      provider=config.provider,
   )
 
   if model_id:
@@ -176,14 +203,14 @@ def create_model(
 
 def create_model_from_id(
     model_id: str | None = None,
-    provider: str | None = None,
+    provider: ProviderSelection | None = None,
     **provider_kwargs: typing.Any,
 ) -> base_model.BaseLanguageModel:
   """Convenience function to create a model.
 
   Args:
-    model_id: The model identifier (e.g., "gemini-2.5-flash").
-    provider: Optional explicit provider name to disambiguate.
+    model_id: The model identifier (e.g., "gemini-3-flash-preview").
+    provider: Optional explicit provider family/name to disambiguate.
     **provider_kwargs: Optional provider-specific keyword arguments.
 
   Returns:
@@ -243,9 +270,11 @@ def _create_model_with_schema(
     schema_instance.sync_with_provider_kwargs(kwargs)
 
   # Add environment defaults
-  model_id = config.model_id
+  model_id = _effective_model_id(config)
   kwargs = _kwargs_with_environment_defaults(
-      model_id or config.provider or "", kwargs
+      model_id,
+      kwargs,
+      provider=config.provider,
   )
 
   if model_id:

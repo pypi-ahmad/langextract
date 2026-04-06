@@ -233,6 +233,35 @@ class RegistryTest(absltest.TestCase):
         provider_class = router.resolve(model_id)
         self.assertEqual(provider_class, TestHFProvider)
 
+  def test_gemini_patterns_cover_known_model_ids(self):
+    """Test that GEMINI_PATTERNS match all known Gemini model IDs.
+
+    Ensures the built-in patterns correctly route current and upcoming
+    Gemini model IDs (including gemini-3-flash-preview) to the Gemini
+    provider.
+    """
+    # pylint: disable=import-outside-toplevel
+    from langextract.providers import patterns
+
+    @router.register(*patterns.GEMINI_PATTERNS, priority=100)
+    class TestGeminiProvider(FakeProvider):  # pylint: disable=too-few-public-methods
+      pass
+
+    gemini_model_ids = [
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-2.0-flash",
+        "gemini-1.5-pro",
+        "gemini-1.5-flash",
+        "gemini-3-flash-preview",
+        "gemini-pro",
+    ]
+
+    for model_id in gemini_model_ids:
+      with self.subTest(model_id=model_id):
+        provider_class = router.resolve(model_id)
+        self.assertEqual(provider_class, TestGeminiProvider)
+
 
 if __name__ == "__main__":
   absltest.main()

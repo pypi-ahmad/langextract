@@ -597,6 +597,31 @@ class InitTest(parameterized.TestCase):
             f"lx.data.{name} not accessible via compatibility shim",
         )
 
+  def test_ingestion_module_lazy_access(self):
+    """Verify ingestion module is lazily accessible and exposes normalize."""
+    self.assertTrue(
+        hasattr(lx.ingestion, "normalize"),
+        "lx.ingestion.normalize not accessible via lazy loading",
+    )
+    self.assertIn("ingestion", dir(lx))
+
+  def test_ingestion_backends_module_lazy_access(self):
+    """Verify ingestion_backends is discoverable via the top-level package."""
+    self.assertTrue(
+        hasattr(lx.ingestion_backends, "list_categories"),
+        "lx.ingestion_backends.list_categories not accessible via lazy loading",
+    )
+    self.assertIn("ingestion_backends", dir(lx))
+
+  def test_ocr_module_lazy_access(self):
+    """Verify ocr module is lazily accessible but not in dir(lx)."""
+    self.assertTrue(
+        hasattr(lx.ocr, "ocr_image"),
+        "lx.ocr.ocr_image not accessible via lazy loading",
+    )
+    # ocr is intentionally NOT in __all__ (internal/specialized).
+    self.assertNotIn("ocr", dir(lx))
+
   def test_tokenizer_module_exports_via_compatibility_shim(self):
     """Verify tokenizer module exports are accessible via lx.tokenizer."""
     expected_exports = [

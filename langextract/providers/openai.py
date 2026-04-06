@@ -26,6 +26,7 @@ from langextract.core import data
 from langextract.core import exceptions
 from langextract.core import schema
 from langextract.core import types as core_types
+from langextract.providers import common as provider_common
 from langextract.providers import patterns
 from langextract.providers import router
 
@@ -37,6 +38,8 @@ from langextract.providers import router
 @dataclasses.dataclass(init=False)
 class OpenAILanguageModel(base_model.BaseLanguageModel):
   """Language model inference using OpenAI's API with structured output."""
+
+  _PROVIDER_NAME = 'OpenAI'
 
   model_id: str = 'gpt-4o-mini'
   api_key: str | None = None
@@ -168,13 +171,21 @@ class OpenAILanguageModel(base_model.BaseLanguageModel):
       response = self._client.chat.completions.create(**api_params)
 
       # Extract the response text using the v1.x response format
-      output_text = response.choices[0].message.content
+      output_text = provider_common.normalize_text_output(
+          response.choices[0].message.content,
+          provider=self._PROVIDER_NAME,
+          field_name='choices[0].message.content',
+      )
 
       return core_types.ScoredOutput(score=1.0, output=output_text)
 
+    except exceptions.InferenceRuntimeError:
+      raise
     except Exception as e:
-      raise exceptions.InferenceRuntimeError(
-          f'OpenAI API error: {str(e)}', original=e
+      raise provider_common.runtime_error(
+          self._PROVIDER_NAME,
+          f'OpenAI API error: {str(e)}',
+          original=e,
       ) from e
 
   def infer(
@@ -233,9 +244,13 @@ class OpenAILanguageModel(base_model.BaseLanguageModel):
           index = future_to_index[future]
           try:
             results[index] = future.result()
+          except exceptions.InferenceRuntimeError:
+            raise
           except Exception as e:
-            raise exceptions.InferenceRuntimeError(
-                f'Parallel inference error: {str(e)}', original=e
+            raise provider_common.runtime_error(
+                self._PROVIDER_NAME,
+                f'Parallel inference error: {str(e)}',
+                original=e,
             ) from e
 
         for result in results:

@@ -28,12 +28,14 @@ from langextract.core import data
 from langextract.core import exceptions
 from langextract.core import schema
 from langextract.core import types as core_types
+from langextract.providers import backends as provider_backends
+from langextract.providers import common as provider_common
 from langextract.providers import gemini_batch
 from langextract.providers import patterns
 from langextract.providers import router
 from langextract.providers import schemas
 
-_DEFAULT_MODEL_ID = 'gemini-2.5-flash'
+_DEFAULT_MODEL_ID = provider_backends.DEFAULT_GEMINI_MODEL_ID
 _DEFAULT_LOCATION = 'us-central1'
 _MIME_TYPE_JSON = 'application/json'
 
@@ -48,6 +50,23 @@ _API_CONFIG_KEYS: Final[set[str]] = {
 }
 
 
+def _resolve_gemini_model_id(model_id: str | None) -> str:
+  backend = provider_backends.get_provider_backend(
+      provider_backends.ProviderFamily.GEMINI
+  )
+  if backend is None:
+    raise exceptions.InferenceConfigError(
+        'Gemini backend metadata is unavailable.'
+    )
+
+  resolved = backend.resolve_model_id(model_id)
+  if resolved is None:
+    raise exceptions.InferenceConfigError(
+        'Gemini model_id could not be resolved.'
+    )
+  return resolved
+
+
 @router.register(
     *patterns.GEMINI_PATTERNS,
     priority=patterns.GEMINI_PRIORITY,
@@ -55,6 +74,8 @@ _API_CONFIG_KEYS: Final[set[str]] = {
 @dataclasses.dataclass(init=False)
 class GeminiLanguageModel(base_model.BaseLanguageModel):  # pylint: disable=too-many-instance-attributes
   """Language model inference using Google's Gemini API with structured output."""
+
+  _PROVIDER_NAME: Final[str] = 'Gemini'
 
   model_id: str = _DEFAULT_MODEL_ID
   api_key: str | None = None
@@ -137,7 +158,7 @@ class GeminiLanguageModel(base_model.BaseLanguageModel):  # pylint: disable=too-
           ' google-genai'
       ) from e
 
-    self.model_id = model_id
+    self.model_id = _resolve_gemini_model_id(model_id)
     self.api_key = api_key
     self.vertexai = vertexai
     self.credentials = credentials
@@ -218,11 +239,22 @@ class GeminiLanguageModel(base_model.BaseLanguageModel):  # pylint: disable=too-
           model=self.model_id, contents=prompt, config=config
       )
 
-      return core_types.ScoredOutput(score=1.0, output=response.text)
+      return core_types.ScoredOutput(
+          score=1.0,
+          output=provider_common.normalize_text_output(
+              response.text,
+              provider=self._PROVIDER_NAME,
+              field_name='response.text',
+          ),
+      )
 
+    except exceptions.InferenceRuntimeError:
+      raise
     except Exception as e:
-      raise exceptions.InferenceRuntimeError(
-          f'Gemini API error: {str(e)}', original=e
+      raise provider_common.runtime_error(
+          self._PROVIDER_NAME,
+          f'Gemini API error: {str(e)}',
+          original=e,
       ) from e
 
   def infer(
@@ -322,9 +354,13 @@ class GeminiLanguageModel(base_model.BaseLanguageModel):  # pylint: disable=too-
           index = future_to_index[future]
           try:
             results[index] = future.result()
+          except exceptions.InferenceRuntimeError:
+            raise
           except Exception as e:
-            raise exceptions.InferenceRuntimeError(
-                f'Parallel inference error: {str(e)}', original=e
+            raise provider_common.runtime_error(
+                self._PROVIDER_NAME,
+                f'Parallel inference error: {str(e)}',
+                original=e,
             ) from e
 
         for result in results:

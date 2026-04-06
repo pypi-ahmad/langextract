@@ -1,0 +1,22 @@
+# LangExtract configuration file (TOML format)
+#
+# Load in Python:
+#   config = langextract.load_extraction_config("extract.toml")
+#
+# Use from the CLI:
+#   langextract extract --config extract.toml --prompt "..." --examples ex.json input.txt
+
+provider = "gemini"
+model = "gemini-2.5-flash"
+
+fetch_urls = true
+
+# ocr_engine = "deepseek-ocr"
+
+[backends]
+readable_pdf = "auto"
+scanned_pdf = "paddleocr"
+image = "paddleocr"
+docx = "python-docx"
+html = "trafilatura"
+url = "trafilatura"

@@ -59,7 +59,7 @@ model = lx.factory.create_model(config)
 
 # Method 2: Using provider without model_id (uses provider's default)
 config = lx.factory.ModelConfig(
-    provider="GeminiLanguageModel",  # Will use default gemini-2.5-flash
+    provider="GeminiLanguageModel",  # Will use default gemini-3-flash-preview
     provider_kwargs={"api_key": "..."}
 )
 model = lx.factory.create_model(config)

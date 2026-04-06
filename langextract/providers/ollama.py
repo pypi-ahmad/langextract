@@ -98,6 +98,7 @@ from langextract.core import exceptions
 from langextract.core import format_handler as fh
 from langextract.core import schema
 from langextract.core import types as core_types
+from langextract.providers import common as provider_common
 from langextract.providers import patterns
 from langextract.providers import router
 
@@ -148,6 +149,7 @@ class OllamaLanguageModel(base_model.BaseLanguageModel):
   _api_key: str | None = None
   _auth_scheme: str = 'Bearer'
   _auth_header: str = 'Authorization'
+  _PROVIDER_NAME = 'Ollama'
 
   @classmethod
   def get_schema_class(cls) -> type[schema.BaseSchema] | None:
@@ -269,10 +271,23 @@ class OllamaLanguageModel(base_model.BaseLanguageModel):
             model_url=self._model_url,
             **combined_kwargs,
         )
-        yield [core_types.ScoredOutput(score=1.0, output=response['response'])]
+        yield [
+            core_types.ScoredOutput(
+                score=1.0,
+                output=provider_common.mapping_text_field(
+                    response,
+                    provider=self._PROVIDER_NAME,
+                    field_name='response',
+                ),
+            )
+        ]
+      except exceptions.InferenceRuntimeError:
+        raise
       except Exception as e:
-        raise exceptions.InferenceRuntimeError(
-            f'Ollama API error: {str(e)}', original=e
+        raise provider_common.runtime_error(
+            self._PROVIDER_NAME,
+            f'Ollama API error: {str(e)}',
+            original=e,
         ) from e
 
   def _ollama_query(
@@ -445,7 +460,23 @@ class OllamaLanguageModel(base_model.BaseLanguageModel):
 
     response.encoding = 'utf-8'
     if response.status_code == 200:
-      return response.json()
+      try:
+        body = response.json()
+      except ValueError as e:
+        raise provider_common.runtime_error(
+            self._PROVIDER_NAME,
+            'Ollama returned a non-JSON response.',
+            original=e,
+        ) from e
+      if not isinstance(body, Mapping):
+        raise provider_common.runtime_error(
+            self._PROVIDER_NAME,
+            (
+                'Ollama returned an unexpected response type '
+                f'{type(body).__name__}.'
+            ),
+        )
+      return body
     if response.status_code == 404:
       raise exceptions.InferenceConfigError(
           f"Can't find Ollama {model}. Try: ollama run {model}"

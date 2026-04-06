@@ -1,0 +1,28 @@
+# LangExtract configuration file
+#
+# Load in Python:
+#   config = langextract.load_extraction_config("extract.yaml")
+#   result = langextract.extract(..., config=config)
+#
+# Use from the CLI:
+#   langextract extract --config extract.yaml --prompt "..." --examples ex.json input.txt
+
+# Provider and model
+provider: gemini
+model: gemini-2.5-flash
+
+# Ingestion options
+fetch_urls: true
+
+# OCR engine for scanned PDFs and images (requires Ollama)
+# ocr_engine: deepseek-ocr
+
+# Backend selection per file category.
+# Use a backend name, "auto", or "default" to leave at the category default.
+backends:
+    readable_pdf: auto
+    scanned_pdf: paddleocr
+    image: paddleocr
+    docx: python-docx
+    html: trafilatura
+    url: trafilatura

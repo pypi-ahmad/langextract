@@ -20,6 +20,7 @@ using patterns from the centralized patterns module.
 
 from typing import TypedDict
 
+from langextract.providers import backends
 from langextract.providers import patterns
 
 
@@ -34,18 +35,9 @@ class ProviderConfig(TypedDict):
 # Built-in provider configurations using centralized patterns
 BUILTIN_PROVIDERS: list[ProviderConfig] = [
     {
-        'patterns': patterns.GEMINI_PATTERNS,
-        'target': 'langextract.providers.gemini:GeminiLanguageModel',
-        'priority': patterns.GEMINI_PRIORITY,
-    },
-    {
-        'patterns': patterns.OLLAMA_PATTERNS,
-        'target': 'langextract.providers.ollama:OllamaLanguageModel',
-        'priority': patterns.OLLAMA_PRIORITY,
-    },
-    {
-        'patterns': patterns.OPENAI_PATTERNS,
-        'target': 'langextract.providers.openai:OpenAILanguageModel',
-        'priority': patterns.OPENAI_PRIORITY,
-    },
+        'patterns': backend.patterns,
+        'target': backend.target,
+        'priority': backend.priority,
+    }
+    for backend in backends.list_builtin_provider_backends()
 ]

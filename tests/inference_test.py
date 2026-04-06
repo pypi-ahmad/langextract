@@ -345,6 +345,33 @@ class TestOllamaLanguageModel(absltest.TestCase):
           "Timeout from constructor should flow through infer()",
       )
 
+  @mock.patch("langextract.providers.ollama.OllamaLanguageModel._ollama_query")
+  def test_ollama_missing_response_field_raises_runtime_error(
+      self, mock_ollama_query
+  ):
+    mock_ollama_query.return_value = {"done": True}
+    model = ollama.OllamaLanguageModel(model_id="gemma2:2b")
+
+    with self.assertRaises(exceptions.InferenceRuntimeError) as cm:
+      list(model.infer(["Test prompt"]))
+
+    self.assertEqual(cm.exception.provider, "Ollama")
+    self.assertIn("missing required field 'response'", str(cm.exception))
+
+  def test_ollama_non_json_response_raises_runtime_error(self):
+    model = ollama.OllamaLanguageModel(model_id="gemma2:2b")
+
+    mock_response = mock.Mock(spec=["status_code", "json", "encoding"])
+    mock_response.status_code = 200
+    mock_response.json.side_effect = ValueError("not json")
+
+    with mock.patch.object(model._requests, "post", return_value=mock_response):
+      with self.assertRaises(exceptions.InferenceRuntimeError) as cm:
+        model._ollama_query(prompt="test prompt")
+
+    self.assertEqual(cm.exception.provider, "Ollama")
+    self.assertIn("non-JSON", str(cm.exception))
+
 
 class TestGeminiLanguageModel(absltest.TestCase):
 
@@ -521,6 +548,26 @@ class TestGeminiLanguageModel(absltest.TestCase):
         location="us-central1",
         http_options=http_options,
     )
+
+  @mock.patch("google.genai.Client")
+  def test_gemini_empty_text_raises_runtime_error(self, mock_client_class):
+    mock_client = mock.Mock()
+    mock_client_class.return_value = mock_client
+
+    mock_response = mock.Mock()
+    mock_response.text = None
+    mock_client.models.generate_content.return_value = mock_response
+
+    model = gemini.GeminiLanguageModel(
+        model_id="gemini-2.5-flash",
+        api_key="test-key",
+    )
+
+    with self.assertRaises(exceptions.InferenceRuntimeError) as cm:
+      list(model.infer(["test prompt"]))
+
+    self.assertEqual(cm.exception.provider, "Gemini")
+    self.assertIn("empty response.text", str(cm.exception))
 
 
 class TestOpenAILanguageModelInference(parameterized.TestCase):
@@ -741,6 +788,46 @@ class TestOpenAILanguageModel(absltest.TestCase):
     call_args = mock_client.chat.completions.create.call_args
     self.assertNotIn("top_p", call_args.kwargs)
     self.assertNotIn("seed", call_args.kwargs)
+
+  @mock.patch("openai.OpenAI")
+  def test_openai_list_content_parts_are_normalized(self, mock_openai_class):
+    mock_client = mock.Mock()
+    mock_openai_class.return_value = mock_client
+
+    mock_response = mock.Mock()
+    mock_response.choices = [
+        mock.Mock(
+            message=mock.Mock(
+                content=[
+                    {"type": "text", "text": "hello"},
+                    {"type": "text", "text": " world"},
+                ]
+            )
+        )
+    ]
+    mock_client.chat.completions.create.return_value = mock_response
+
+    model = openai.OpenAILanguageModel(api_key="test-key")
+    results = list(model.infer(["test prompt"]))
+
+    self.assertEqual(results[0][0].output, "hello world")
+
+  @mock.patch("openai.OpenAI")
+  def test_openai_empty_content_raises_runtime_error(self, mock_openai_class):
+    mock_client = mock.Mock()
+    mock_openai_class.return_value = mock_client
+
+    mock_response = mock.Mock()
+    mock_response.choices = [mock.Mock(message=mock.Mock(content=None))]
+    mock_client.chat.completions.create.return_value = mock_response
+
+    model = openai.OpenAILanguageModel(api_key="test-key")
+
+    with self.assertRaises(exceptions.InferenceRuntimeError) as cm:
+      list(model.infer(["test prompt"]))
+
+    self.assertEqual(cm.exception.provider, "OpenAI")
+    self.assertIn("empty choices[0].message.content", str(cm.exception))
 
   @mock.patch("openai.OpenAI")
   def test_openai_no_system_message_when_not_json_yaml(self, mock_openai_class):

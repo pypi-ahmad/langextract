@@ -33,6 +33,7 @@ OPENAI_PRIORITY = 10
 
 # Ollama provider patterns
 OLLAMA_PATTERNS = (
+    r'^ollama/',  # legacy explicit ollama/<model> style
     # Standard Ollama naming patterns
     r'^gemma',  # gemma2:2b, gemma2:9b, etc.
     r'^llama',  # llama3.2:1b, llama3.1:8b, etc.

@@ -43,9 +43,14 @@ dependencies = [
     "PyYAML>=6.0",
     "regex>=2023.0.0",
     "requests>=2.25.0",
+    "tomli>=2.0.0; python_version < '3.11'",
     "tqdm>=4.64.0",
     "typing-extensions>=4.0.0"
 ]
+
+[project.scripts]
+langextract = "langextract.cli:main"
+trafficmind-check = "trafficmind.cli:main"
 
 [project.urls]
 "Homepage" = "https://github.com/google/langextract"
@@ -57,7 +62,42 @@ dependencies = [
 
 [project.optional-dependencies]
 openai = ["openai>=1.50.0"]
-all = ["openai>=1.50.0"]
+pdf = [
+    "pymupdf>=1.24.0",
+    "pdfplumber>=0.11.0",
+    "pypdf>=5.0.0"
+]
+ocr = [
+    "paddleocr>=2.8.0",
+    "pytesseract>=0.3.10",
+    "Pillow>=9.0.0"
+]
+office = [
+    "openpyxl>=3.1.0",
+    "python-docx>=1.1.0",
+    "docx2txt>=0.8",
+    "python-pptx>=1.0.0"
+]
+review = [
+    "langgraph>=1.0.8"
+]
+# table_pdf backends are registered but not yet implemented.
+# Installing this extra prepares dependencies for upcoming support.
+tables = [
+    "pdfplumber>=0.11.0",
+    "camelot-py>=0.11.0",
+    "tabula-py>=2.9.0"
+]
+html = [
+    "trafilatura>=1.8.0",
+    "beautifulsoup4>=4.12.0"
+]
+url = ["langextract[html]"]
+xlsx = ["openpyxl>=3.1.0"]
+full = [
+    "langextract[openai,pdf,ocr,office,tables,html,xlsx,review]"
+]
+all = ["langextract[full]"]
 dev = [
     "pyink~=24.3.0",
     "isort>=5.13.0",
@@ -70,6 +110,7 @@ dev = [
 ]
 test = [
     "pytest>=7.4.0",
+    "langgraph>=1.0.8",
     "tomli>=2.0.0"
 ]
 notebook = [
@@ -83,7 +124,15 @@ packages = [
     "langextract._compat",
     "langextract.core",
     "langextract.providers",
-    "langextract.providers.schemas"
+    "langextract.providers.schemas",
+    "trafficmind",
+    "trafficmind.analytics",
+    "trafficmind.evaluation",
+    "trafficmind.integrations",
+    "trafficmind.registry",
+    "trafficmind.review",
+    "trafficmind.search",
+    "trafficmind.sources"
 ]
 include-package-data = true
 
@@ -107,6 +156,7 @@ openai = "langextract.providers.openai:OpenAILanguageModel"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 python_files = "*_test.py"
 python_classes = "Test*"
 python_functions = "test_*"

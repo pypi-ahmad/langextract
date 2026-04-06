@@ -50,10 +50,10 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install format tools
+      - name: Install tox
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install tox
 
       - name: Check formatting
         id: format-check
@@ -61,8 +61,7 @@ jobs:
           GITHUB_TOKEN: ""
         run: |
           set -euo pipefail
-          pyink --check --diff .
-          isort --check-only --diff .
+          tox -e format
 
       - name: Check import structure
         id: import-check
@@ -70,7 +69,7 @@ jobs:
           GITHUB_TOKEN: ""
         run: |
           set -euo pipefail
-          lint-imports --config pyproject.toml
+          tox -e imports
 
       - name: Comment on PR if formatting fails
         if: failure() && steps.format-check.outcome == 'failure'
@@ -82,10 +81,35 @@ jobs:
               issue_number: context.payload.pull_request.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '❌ **Formatting Check Failed**\n\nYour PR has formatting issues. Please run the following command locally and push the changes:\n\n```bash\n./autoformat.sh\n```\n\nThis will automatically fix all formatting issues using pyink (Google\'s Python formatter) and isort.'
+              body: '❌ **Formatting Check Failed**\n\nYour PR has formatting issues. Please run the following command locally and push the changes:\n\n```bash\n./autoformat.sh\n```\n\nThis will automatically fix isort and pyink formatting drift. Import-structure failures are reported separately and need a code change rather than auto-formatting.'
             }).catch(err => {
               console.log('Comment posting failed:', err.message);
             });
+
+  build-and-startup-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install tox
+        run: |
+          python -m pip install --upgrade pip
+          pip install tox
+
+      - name: Validate build artifacts
+        run: tox -e build
+
+      - name: Run TrafficMind startup sanity check
+        env:
+          TRAFFICMIND_PROFILE: dev
+        run: tox -e trafficmind-check
 
   test:
     runs-on: ubuntu-latest

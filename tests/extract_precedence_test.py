@@ -175,7 +175,67 @@ class ExtractParameterPrecedenceTest(absltest.TestCase):
 
     mock_model_config.assert_called_once()
     _, kwargs = mock_model_config.call_args
-    self.assertEqual(kwargs["model_id"], "gemini-2.5-flash")
+    self.assertEqual(kwargs["model_id"], factory.DEFAULT_MODEL_ID)
+    mock_create_model.assert_called_once()
+    self.assertEqual(result, "ok")
+
+  @mock.patch("langextract.annotation.Annotator")
+  @mock.patch("langextract.extraction.factory.create_model")
+  def test_provider_is_forwarded_into_model_config(
+      self, mock_create_model, mock_annotator_cls
+  ):
+    """Explicit provider selection should be passed to ModelConfig."""
+    mock_model = mock.MagicMock()
+    mock_model.requires_fence_output = True
+    mock_create_model.return_value = mock_model
+    mock_annotator_cls.return_value.annotate_text.return_value = "ok"
+    mock_config = mock.MagicMock()
+
+    with mock.patch(
+        "langextract.extraction.factory.ModelConfig", return_value=mock_config
+    ) as mock_model_config:
+      result = lx.extract(
+          text_or_documents="text",
+          prompt_description=self.description,
+          examples=self.examples,
+          model_id="gpt-4o-mini",
+          provider="openai",
+          use_schema_constraints=False,
+      )
+
+    mock_model_config.assert_called_once()
+    _, kwargs = mock_model_config.call_args
+    self.assertEqual(kwargs["provider"], "openai")
+    mock_create_model.assert_called_once()
+    self.assertEqual(result, "ok")
+
+  @mock.patch("langextract.annotation.Annotator")
+  @mock.patch("langextract.extraction.factory.create_model")
+  def test_provider_only_does_not_force_model_id_for_ollama(
+      self, mock_create_model, mock_annotator_cls
+  ):
+    """Explicit non-Gemini providers should not inject the Gemini default."""
+    mock_model = mock.MagicMock()
+    mock_model.requires_fence_output = True
+    mock_create_model.return_value = mock_model
+    mock_annotator_cls.return_value.annotate_text.return_value = "ok"
+    mock_config = mock.MagicMock()
+
+    with mock.patch(
+        "langextract.extraction.factory.ModelConfig", return_value=mock_config
+    ) as mock_model_config:
+      result = lx.extract(
+          text_or_documents="text",
+          prompt_description=self.description,
+          examples=self.examples,
+          provider="ollama",
+          use_schema_constraints=False,
+      )
+
+    self.assertGreaterEqual(mock_model_config.call_count, 1)
+    _, kwargs = mock_model_config.call_args
+    self.assertEqual(kwargs["provider"], "ollama")
+    self.assertIsNone(kwargs["model_id"])
     mock_create_model.assert_called_once()
     self.assertEqual(result, "ok")
 

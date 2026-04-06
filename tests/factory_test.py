@@ -119,6 +119,104 @@ class FactoryTest(absltest.TestCase):  # pylint: disable=too-many-public-methods
     model = factory.create_model(config)
     self.assertEqual(model.api_key, "env-openai-key")
 
+  @mock.patch.dict(os.environ, {"OPENAI_API_KEY": "env-openai-key"}, clear=True)
+  def test_explicit_openai_provider_uses_openai_api_key_from_environment(self):
+    """Explicit provider selection should still inherit OpenAI env defaults."""
+
+    class DefaultOpenAIProvider(base_model.BaseLanguageModel):
+
+      def __init__(self, model_id, api_key=None, **kwargs):
+        self.model_id = model_id
+        self.api_key = api_key
+        super().__init__()
+
+      def infer(self, batch_prompts, **kwargs):
+        return [[types.ScoredOutput(score=1.0, output="openai")]]
+
+    config = factory.ModelConfig(provider="openai")
+
+    with mock.patch(
+        "langextract.factory.router.resolve_provider",
+        return_value=DefaultOpenAIProvider,
+    ):
+      model = factory.create_model(config)
+
+    self.assertEqual(model.model_id, "gpt-4o-mini")
+    self.assertEqual(model.api_key, "env-openai-key")
+
+  @mock.patch.dict(os.environ, {"GEMINI_API_KEY": "env-gemini-key"}, clear=True)
+  def test_explicit_gemini_provider_uses_backend_default_model_id(self):
+    """Explicit Gemini selection should use the built-in default model id."""
+
+    class DefaultGeminiProvider(base_model.BaseLanguageModel):
+
+      def __init__(self, model_id, api_key=None, **kwargs):
+        self.model_id = model_id
+        self.api_key = api_key
+        self.kwargs = kwargs
+        super().__init__()
+
+      def infer(self, batch_prompts, **kwargs):
+        return [[types.ScoredOutput(score=1.0, output="gemini")]]
+
+    config = factory.ModelConfig(provider="gemini")
+
+    with mock.patch(
+        "langextract.factory.router.resolve_provider",
+        return_value=DefaultGeminiProvider,
+    ):
+      model = factory.create_model(config)
+
+    self.assertEqual(model.model_id, factory.DEFAULT_MODEL_ID)
+    self.assertEqual(model.api_key, "env-gemini-key")
+
+  def test_explicit_gemini_provider_rejects_non_gemini_model_id(self):
+    config = factory.ModelConfig(provider="gemini", model_id="gpt-4o")
+
+    with self.assertRaises(exceptions.InferenceConfigError) as cm:
+      factory.create_model(config)
+
+    self.assertIn("not valid for provider 'gemini'", str(cm.exception))
+
+  @mock.patch.dict(
+      os.environ, {"OLLAMA_BASE_URL": "http://custom:11434"}, clear=True
+  )
+  def test_explicit_ollama_provider_uses_backend_base_url_default(self):
+    """Explicit Ollama selection should receive the configured base URL."""
+
+    class DefaultOllamaProvider(base_model.BaseLanguageModel):
+
+      def __init__(self, model_id, base_url=None, **kwargs):
+        self.model_id = model_id
+        self.base_url = base_url
+        self.kwargs = kwargs
+        super().__init__()
+
+      def infer(self, batch_prompts, **kwargs):
+        return [[types.ScoredOutput(score=1.0, output="ollama")]]
+
+    config = factory.ModelConfig(
+        provider="ollama",
+        model_id="gemma2:2b",
+    )
+
+    with mock.patch(
+        "langextract.factory.router.resolve_provider",
+        return_value=DefaultOllamaProvider,
+    ):
+      model = factory.create_model(config)
+
+    self.assertEqual(model.base_url, "http://custom:11434")
+
+  def test_explicit_ollama_provider_requires_model_id(self):
+    """Built-in Ollama selection should fail clearly without a model id."""
+    config = factory.ModelConfig(provider="ollama")
+
+    with self.assertRaises(exceptions.InferenceConfigError) as cm:
+      factory.create_model(config)
+
+    self.assertIn("requires an explicit model_id", str(cm.exception))
+
   @mock.patch.dict(
       os.environ, {"LANGEXTRACT_API_KEY": "env-langextract-key"}, clear=True
   )
@@ -194,8 +292,7 @@ class FactoryTest(absltest.TestCase):  # pylint: disable=too-many-public-methods
   def test_ollama_uses_base_url_from_environment(self):
     """Factory should use OLLAMA_BASE_URL from environment for Ollama models."""
 
-    @router.register(r"^ollama")
-    class FakeOllamaProvider(base_model.BaseLanguageModel):  # pylint: disable=unused-variable
+    class FakeOllamaProvider(base_model.BaseLanguageModel):
 
       def __init__(self, model_id, base_url=None, **kwargs):
         self.model_id = model_id
@@ -209,6 +306,35 @@ class FactoryTest(absltest.TestCase):  # pylint: disable=too-many-public-methods
         return self.infer(prompts)
 
     config = factory.ModelConfig(model_id="ollama/llama2")
+    with mock.patch(
+        "langextract.factory.router.resolve",
+        return_value=FakeOllamaProvider,
+    ):
+      model = factory.create_model(config)
+
+    self.assertEqual(model.base_url, "http://custom:11434")
+
+  @mock.patch.dict(
+      os.environ, {"OLLAMA_BASE_URL": "http://custom:11434"}, clear=True
+  )
+  def test_ollama_family_uses_base_url_for_native_model_ids(self):
+    """Ollama defaults should apply to native model IDs like gemma2:2b."""
+
+    @router.register(r"^gemma", priority=200)
+    class FakeNativeOllamaProvider(base_model.BaseLanguageModel):
+
+      def __init__(self, model_id, base_url=None, **kwargs):
+        self.model_id = model_id
+        self.base_url = base_url
+        super().__init__()
+
+      def infer(self, batch_prompts, **kwargs):
+        return [[types.ScoredOutput(score=1.0, output="ollama")]]
+
+      def infer_batch(self, prompts, batch_size=32):
+        return self.infer(prompts)
+
+    config = factory.ModelConfig(model_id="gemma2:2b")
     model = factory.create_model(config)
 
     self.assertEqual(model.base_url, "http://custom:11434")
@@ -257,6 +383,17 @@ class FactoryTest(absltest.TestCase):  # pylint: disable=too-many-public-methods
     config.provider_kwargs["new_key"] = "value"
 
     self.assertEqual(config.provider_kwargs["new_key"], "value")
+
+  def test_model_config_provider_family_detects_builtins(self):
+    """ModelConfig should expose built-in provider-family metadata."""
+    self.assertEqual(
+        factory.ModelConfig(model_id="gemini-pro").provider_family,
+        factory.ProviderFamily.GEMINI,
+    )
+    self.assertEqual(
+        factory.ModelConfig(provider="OpenAILanguageModel").provider_family,
+        factory.ProviderFamily.OPENAI,
+    )
 
   def test_uses_highest_priority_provider_when_multiple_match(self):
     """Factory uses highest priority provider when multiple patterns match."""

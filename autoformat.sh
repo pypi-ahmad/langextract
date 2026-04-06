@@ -16,7 +16,7 @@
 # Autoformat LangExtract codebase
 #
 # Usage: ./autoformat.sh [target_directory ...]
-#        If no target is specified, formats the current directory
+#        If no target is specified, formats langextract trafficmind tests
 #
 # This script runs:
 # 1. isort for import sorting
@@ -48,24 +48,24 @@ show_usage() {
     echo "Formats Python code using isort and pyink according to Google style."
     echo
     echo "Arguments:"
-    echo "  target_directory    One or more directories to format (default: langextract tests)"
+    echo "  target_directory    One or more directories to format (default: langextract trafficmind tests)"
     echo
     echo "Examples:"
-    echo "  $0                  # Format langextract and tests directories"
+    echo "  $0                  # Format langextract, trafficmind, and tests"
     echo "  $0 langextract      # Format only langextract directory"
     echo "  $0 src tests        # Format multiple specific directories"
 }
 
 # Check for help flag
-if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+if [ $# -gt 0 ] && { [ "$1" = "-h" ] || [ "$1" = "--help" ]; }; then
     show_usage
     exit 0
 fi
 
 # Determine target directories
 if [ $# -eq 0 ]; then
-    TARGETS="langextract tests"
-    echo "No target specified. Formatting default directories: langextract tests"
+    TARGETS="langextract trafficmind tests"
+    echo "No target specified. Formatting default directories: langextract trafficmind tests"
 else
     TARGETS="$@"
     echo "Formatting targets: $TARGETS"
