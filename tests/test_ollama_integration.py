@@ -224,3 +224,56 @@ def test_deepseek_r1_extraction():
   extraction = result.extractions[0]
   assert extraction.extraction_class == "person"
   assert "john" in extraction.extraction_text.lower()
+
+
+# ---------------------------------------------------------------------------
+# OCR live smoke tests
+# ---------------------------------------------------------------------------
+
+def _create_white_png(width: int = 2, height: int = 2) -> bytes:
+  """Create a tiny valid white PNG image in pure Python (no PIL)."""
+  import struct
+  import zlib
+
+  def _chunk(chunk_type: bytes, data: bytes) -> bytes:
+    c = chunk_type + data
+    return struct.pack(">I", len(data)) + c + struct.pack(">I", zlib.crc32(c) & 0xFFFFFFFF)
+
+  raw_rows = b"".join(b"\x00" + b"\xff" * (width * 3) for _ in range(height))
+  ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+  return (
+      b"\x89PNG\r\n\x1a\n"
+      + _chunk(b"IHDR", ihdr)
+      + _chunk(b"IDAT", zlib.compress(raw_rows))
+      + _chunk(b"IEND", b"")
+  )
+
+
+@pytest.mark.skipif(
+    not _model_available("deepseek-ocr"),
+    reason="deepseek-ocr not available in Ollama",
+)
+def test_deepseek_ocr_smoke():
+  """Live smoke test: deepseek-ocr returns a string from a tiny image."""
+  from langextract import ocr
+
+  result = ocr.ocr_image(
+      image_data=_create_white_png(),
+      model_id="deepseek-ocr",
+  )
+  assert isinstance(result, str)
+
+
+@pytest.mark.skipif(
+    not _model_available("glm-ocr"),
+    reason="glm-ocr not available in Ollama",
+)
+def test_glm_ocr_smoke():
+  """Live smoke test: glm-ocr returns a string from a tiny image."""
+  from langextract import ocr
+
+  result = ocr.ocr_image(
+      image_data=_create_white_png(),
+      model_id="glm-ocr",
+  )
+  assert isinstance(result, str)

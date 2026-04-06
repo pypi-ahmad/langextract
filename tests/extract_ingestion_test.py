@@ -164,69 +164,97 @@ class ExtractNormalizeSeamTest(absltest.TestCase):
     self.assertIsInstance(result, data.AnnotatedDocument)
 
 
-class NormalizePathExtractionTest(absltest.TestCase):
+class BinaryUrlRegressionTest(absltest.TestCase):
+  """Regression: binary URLs must be rejected, not silently decoded as text.
 
-  @mock.patch("langextract.annotation.Annotator.annotate_text")
+  The normalization seam in extract() *replaces* the old text-only URL path.
+  If a binary URL (e.g. a PDF served over HTTP) were decoded as text first,
+  the extraction would silently produce garbage.  These tests verify that:
+    1. extract() rejects binary PDF URLs with UnsupportedIngestionError.
+    2. The old io.download_text_from_url is never called from extract().
+    3. Plain text URLs still work through the same normalization path.
+  """
+
+  @mock.patch("langextract.ingestion.requests.get")
   @mock.patch("langextract.extraction.factory.create_model")
-  def test_text_file_goes_to_annotate_text(
-      self, mock_create_model, mock_annotate_text
+  def test_binary_pdf_url_raises_unsupported_not_garbage(
+      self, mock_create_model, mock_get
   ):
     mock_create_model.return_value = _mock_model()
-    mock_annotate_text.return_value = data.AnnotatedDocument(
-        text="File content.",
-        extractions=[],
-    )
+    mock_response = mock.MagicMock()
+    mock_response.content = b"%PDF-1.4 binary content"
+    mock_response.headers = {"Content-Type": "application/pdf"}
+    mock_response.raise_for_status = mock.MagicMock()
+    mock_get.return_value = mock_response
 
-    with tempfile.NamedTemporaryFile(
-        suffix=".txt", mode="w", delete=False, encoding="utf-8"
-    ) as handle:
-      handle.write("File content.")
-      path = pathlib.Path(handle.name)
-
-    try:
-      result = lx.extract(
-          text_or_documents=path,
+    with self.assertRaises(lx.ingestion.UnsupportedIngestionError):
+      lx.extract(
+          text_or_documents="https://example.com/report.pdf",
           prompt_description="desc",
           examples=_MINIMAL_EXAMPLES,
           api_key="k",
       )
-    finally:
-      path.unlink()
 
+  @mock.patch("langextract.ingestion.requests.get")
+  @mock.patch("langextract.io.download_text_from_url")
+  @mock.patch("langextract.extraction.factory.create_model")
+  def test_old_download_text_from_url_never_called(
+      self, mock_create_model, mock_download, mock_get
+  ):
+    mock_create_model.return_value = _mock_model()
+    mock_response = mock.MagicMock()
+    mock_response.content = b"hello from the web"
+    mock_response.headers = {"Content-Type": "text/plain"}
+    mock_response.raise_for_status = mock.MagicMock()
+    mock_get.return_value = mock_response
+
+    lx.extract(
+        text_or_documents="https://example.com/notes.txt",
+        prompt_description="desc",
+        examples=_MINIMAL_EXAMPLES,
+        api_key="k",
+    )
+
+    mock_download.assert_not_called()
+
+  @mock.patch("langextract.annotation.Annotator.annotate_text")
+  @mock.patch("langextract.ingestion.requests.get")
+  @mock.patch("langextract.extraction.factory.create_model")
+  def test_text_url_still_reaches_extraction(
+      self, mock_create_model, mock_get, mock_annotate_text
+  ):
+    mock_create_model.return_value = _mock_model()
+    mock_response = mock.MagicMock()
+    mock_response.content = b"Patient takes Aspirin."
+    mock_response.headers = {"Content-Type": "text/plain"}
+    mock_response.raise_for_status = mock.MagicMock()
+    mock_get.return_value = mock_response
+    mock_annotate_text.return_value = data.AnnotatedDocument(
+        text="Patient takes Aspirin.",
+        extractions=[],
+    )
+
+    result = lx.extract(
+        text_or_documents="https://example.com/notes.txt",
+        prompt_description="desc",
+        examples=_MINIMAL_EXAMPLES,
+        api_key="k",
+    )
+
+    mock_annotate_text.assert_called_once()
     _, kwargs = mock_annotate_text.call_args
-    self.assertEqual(kwargs["text"], "File content.")
+    self.assertEqual(kwargs["text"], "Patient takes Aspirin.")
     self.assertIsInstance(result, data.AnnotatedDocument)
 
-  @mock.patch("langextract.annotation.Annotator.annotate_text")
-  @mock.patch("langextract.extraction.factory.create_model")
-  def test_csv_path_goes_to_annotate_text(
-      self, mock_create_model, mock_annotate_text
-  ):
-    mock_create_model.return_value = _mock_model()
-    mock_annotate_text.return_value = data.AnnotatedDocument(
-        text="serialized csv",
-        extractions=[],
-    )
 
-    with tempfile.NamedTemporaryFile(
-        suffix=".csv", mode="w", delete=False, encoding="utf-8"
-    ) as handle:
-      handle.write("text,id\nhello,1\nworld,2\n")
-      path = pathlib.Path(handle.name)
+class NormalizePathExtractionTest(absltest.TestCase):
+  """Verify extract() routes single-Document and Path inputs correctly.
 
-    try:
-      lx.extract(
-          text_or_documents=path,
-          prompt_description="desc",
-          examples=_MINIMAL_EXAMPLES,
-          api_key="k",
-      )
-    finally:
-      path.unlink()
-
-    _, kwargs = mock_annotate_text.call_args
-    self.assertIn("Format: csv", kwargs["text"])
-    self.assertIn('Row 1: text="hello" | id="1"', kwargs["text"])
+  Format-specific ingestion (txt, csv, pdf, xlsx) is tested exhaustively
+  in ingestion_test.py at the normalize()/normalize_input() level.  This
+  class only covers the annotation-path dispatch that ingestion_test.py
+  does not reach.
+  """
 
   @mock.patch("langextract.annotation.Annotator.annotate_documents")
   @mock.patch("langextract.extraction.factory.create_model")
@@ -244,147 +272,6 @@ class NormalizePathExtractionTest(absltest.TestCase):
     )
 
     mock_annotate_docs.assert_called_once()
-
-  @mock.patch("langextract.annotation.Annotator.annotate_text")
-  @mock.patch("langextract.extraction.factory.create_model")
-  @mock.patch("langextract.ingestion._import_pymupdf")
-  def test_pdf_path_goes_to_annotate_text(
-      self,
-      mock_import_pymupdf,
-      mock_create_model,
-      mock_annotate_text,
-  ):
-    mock_create_model.return_value = _mock_model()
-    mock_annotate_text.return_value = data.AnnotatedDocument(
-        text="Digital PDF text",
-        extractions=[],
-    )
-
-    mock_page = mock.MagicMock()
-    mock_page.get_text.return_value = "Digital PDF text"
-    mock_doc = mock.MagicMock()
-    mock_doc.__len__.return_value = 1
-    mock_doc.__getitem__.return_value = mock_page
-    mock_pymupdf = mock.MagicMock()
-    mock_pymupdf.open.return_value = mock_doc
-    mock_import_pymupdf.return_value = mock_pymupdf
-
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as handle:
-      handle.write(b"%PDF-1.4")
-      path = pathlib.Path(handle.name)
-
-    try:
-      with mock.patch.dict("sys.modules", {"pymupdf": mock.MagicMock()}):
-        result = lx.extract(
-            text_or_documents=path,
-            prompt_description="desc",
-            examples=_MINIMAL_EXAMPLES,
-            api_key="k",
-        )
-    finally:
-      path.unlink()
-
-    _, kwargs = mock_annotate_text.call_args
-    self.assertIn("Digital PDF text", kwargs["text"])
-    self.assertIsInstance(result, data.AnnotatedDocument)
-
-  @mock.patch("langextract.annotation.Annotator.annotate_text")
-  @mock.patch("langextract.extraction.factory.create_model")
-  @mock.patch("langextract.ingestion.pd.read_excel")
-  def test_xlsx_path_goes_to_annotate_text(
-      self,
-      mock_read_excel,
-      mock_create_model,
-      mock_annotate_text,
-  ):
-    mock_create_model.return_value = _mock_model()
-    mock_annotate_text.return_value = data.AnnotatedDocument(
-        text="serialized xlsx",
-        extractions=[],
-    )
-    mock_read_excel.return_value = lx.ingestion.pd.DataFrame(
-        {"text": ["hello"], "id": ["1"]}
-    )
-
-    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as handle:
-      path = pathlib.Path(handle.name)
-
-    try:
-      with mock.patch.dict("sys.modules", {"openpyxl": mock.MagicMock()}):
-        lx.extract(
-            text_or_documents=path,
-            prompt_description="desc",
-            examples=_MINIMAL_EXAMPLES,
-            api_key="k",
-        )
-    finally:
-      path.unlink()
-
-    _, kwargs = mock_annotate_text.call_args
-    self.assertIn("Format: xlsx", kwargs["text"])
-    self.assertIn('Row 1: text="hello" | id="1"', kwargs["text"])
-
-
-class ExtractBytesInputTest(absltest.TestCase):
-  """Test bytes input through extract()."""
-
-  @mock.patch("langextract.annotation.Annotator.annotate_text")
-  @mock.patch("langextract.extraction.factory.create_model")
-  def test_utf8_bytes_go_to_annotate_text(
-      self, mock_create_model, mock_annotate_text
-  ):
-    mock_create_model.return_value = _mock_model()
-    mock_annotate_text.return_value = data.AnnotatedDocument(
-        text="byte text",
-        extractions=[],
-    )
-
-    result = lx.extract(
-        text_or_documents=b"Content from bytes.",
-        prompt_description="desc",
-        examples=_MINIMAL_EXAMPLES,
-        api_key="k",
-    )
-
-    _, kwargs = mock_annotate_text.call_args
-    self.assertEqual(kwargs["text"], "Content from bytes.")
-    self.assertIsInstance(result, data.AnnotatedDocument)
-
-  @mock.patch("langextract.annotation.Annotator.annotate_text")
-  @mock.patch("langextract.extraction.factory.create_model")
-  @mock.patch("langextract.ingestion._import_pymupdf")
-  def test_pdf_bytes_go_to_annotate_text(
-      self,
-      mock_import_pymupdf,
-      mock_create_model,
-      mock_annotate_text,
-  ):
-    mock_create_model.return_value = _mock_model()
-    mock_annotate_text.return_value = data.AnnotatedDocument(
-        text="PDF bytes text",
-        extractions=[],
-    )
-
-    mock_page = mock.MagicMock()
-    mock_page.get_text.return_value = "PDF bytes text"
-    mock_doc = mock.MagicMock()
-    mock_doc.__len__.return_value = 1
-    mock_doc.__getitem__.return_value = mock_page
-    mock_pymupdf = mock.MagicMock()
-    mock_pymupdf.open.return_value = mock_doc
-    mock_import_pymupdf.return_value = mock_pymupdf
-
-    with mock.patch.dict("sys.modules", {"pymupdf": mock.MagicMock()}):
-      result = lx.extract(
-          text_or_documents=b"%PDF-1.4 rest of pdf",
-          prompt_description="desc",
-          examples=_MINIMAL_EXAMPLES,
-          api_key="k",
-      )
-
-    _, kwargs = mock_annotate_text.call_args
-    self.assertIn("PDF bytes text", kwargs["text"])
-    self.assertIsInstance(result, data.AnnotatedDocument)
 
 
 class ExtractOcrSeamTest(absltest.TestCase):
@@ -470,69 +357,6 @@ class ExtractOcrSeamTest(absltest.TestCase):
     _, kwargs = mock_annotate_text.call_args
     self.assertEqual(kwargs["text"], "OCR text from image")
     self.assertIsInstance(result, data.AnnotatedDocument)
-
-  @mock.patch("langextract.annotation.Annotator.annotate_text")
-  @mock.patch("langextract.extraction.factory.create_model")
-  @mock.patch("langextract.ingestion._import_pymupdf")
-  def test_scanned_pdf_can_flow_through_extract_with_ocr_engine(
-      self,
-      mock_import_pymupdf,
-      mock_create_model,
-      mock_annotate_text,
-  ):
-    mock_create_model.return_value = _mock_model()
-    mock_annotate_text.return_value = data.AnnotatedDocument(
-        text="OCR text from PDF page",
-        extractions=[],
-    )
-
-    mock_page = mock.MagicMock()
-    mock_page.get_text.return_value = ""
-    mock_pixmap = mock.MagicMock()
-    mock_pixmap.tobytes.return_value = b"fake-png-data"
-    mock_page.get_pixmap.return_value = mock_pixmap
-
-    mock_doc = mock.MagicMock()
-    mock_doc.__len__.return_value = 1
-    mock_doc.__getitem__.return_value = mock_page
-
-    mock_pymupdf = mock.MagicMock()
-    mock_pymupdf.open.return_value = mock_doc
-    mock_import_pymupdf.return_value = mock_pymupdf
-
-    class _FakeOcrEngine:
-
-      def run_ocr(self, image_data, *, prompt=None):
-        del image_data, prompt
-        return lx.ocr.OcrResult(text="unused", metadata={"engine": "fake"})
-
-      def run_ocr_pdf_page(self, page_image, *, page_number, prompt=None):
-        del page_image, page_number, prompt
-        return lx.ocr.OcrResult(
-            text="OCR text from PDF page",
-            metadata={"engine": "fake"},
-        )
-
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as handle:
-      handle.write(b"%PDF-1.4")
-      path = pathlib.Path(handle.name)
-
-    try:
-      with mock.patch.dict("sys.modules", {"pymupdf": mock.MagicMock()}):
-        result = lx.extract(
-            text_or_documents=path,
-            prompt_description="desc",
-            examples=_MINIMAL_EXAMPLES,
-            api_key="k",
-            ocr_engine=_FakeOcrEngine(),
-        )
-    finally:
-      path.unlink()
-
-    _, kwargs = mock_annotate_text.call_args
-    self.assertIn("OCR text from PDF page", kwargs["text"])
-    self.assertIsInstance(result, data.AnnotatedDocument)
-
 
 if __name__ == "__main__":
   absltest.main()

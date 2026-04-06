@@ -14,10 +14,14 @@
 
 """Tests for langextract.visualization."""
 
+import json
+import os
+import tempfile
 from unittest import mock
 
 from absl.testing import absltest
 
+from langextract import data_lib
 from langextract import visualization
 from langextract.core import data
 
@@ -149,11 +153,78 @@ class VisualizationTest(absltest.TestCase):
         " animate.</p></div>"
     )
     css_html = _VISUALIZATION_CSS
-    expected_html = css_html + body_html
+    expected_html = css_html + "\n" + body_html
 
     actual_html = visualization.visualize(doc)
 
     self.assertEqual(actual_html, expected_html)
+
+
+class VisualizeJsonlMultiDocTest(absltest.TestCase):
+  """Tests for multi-document JSONL visualization."""
+
+  def _make_annotated_doc(self, text, extraction_class, span):
+    return data.AnnotatedDocument(
+        text=text,
+        extractions=[
+            data.Extraction(
+                extraction_class=extraction_class,
+                extraction_text=text[span[0]:span[1]],
+                char_interval=data.CharInterval(
+                    start_pos=span[0], end_pos=span[1]
+                ),
+            )
+        ],
+    )
+
+  def _write_jsonl(self, docs):
+    """Write AnnotatedDocuments to a temp JSONL file, return its path."""
+    tmp = tempfile.NamedTemporaryFile(
+        suffix=".jsonl", mode="w", delete=False, encoding="utf-8"
+    )
+    for doc in docs:
+      tmp.write(json.dumps(data_lib.annotated_document_to_dict(doc)) + "\n")
+    tmp.close()
+    return tmp.name
+
+  @mock.patch.object(visualization, "HTML", new=None)
+  def test_jsonl_all_documents_rendered_by_default(self):
+    """When document_index is None, all documents should be rendered."""
+    doc_a = self._make_annotated_doc("Hello world", "GREETING", (0, 5))
+    doc_b = self._make_annotated_doc("Goodbye world", "FAREWELL", (0, 7))
+    path = self._write_jsonl([doc_a, doc_b])
+    try:
+      html_out = visualization.visualize(path)
+      # Both docs should produce scoped IDs (_0 and _1)
+      self.assertIn("textWindow_0", html_out)
+      self.assertIn("textWindow_1", html_out)
+    finally:
+      os.unlink(path)
+
+  @mock.patch.object(visualization, "HTML", new=None)
+  def test_jsonl_document_index_selects_single(self):
+    """document_index=1 should render only the second document."""
+    doc_a = self._make_annotated_doc("Hello world", "GREETING", (0, 5))
+    doc_b = self._make_annotated_doc("Goodbye world", "FAREWELL", (0, 7))
+    path = self._write_jsonl([doc_a, doc_b])
+    try:
+      html_out = visualization.visualize(path, document_index=1)
+      # Single doc — no suffix
+      self.assertIn("textWindow", html_out)
+      self.assertNotIn("textWindow_0", html_out)
+      self.assertIn("Goodbye", html_out)
+    finally:
+      os.unlink(path)
+
+  @mock.patch.object(visualization, "HTML", new=None)
+  def test_jsonl_document_index_out_of_range_raises(self):
+    doc = self._make_annotated_doc("Hello world", "GREETING", (0, 5))
+    path = self._write_jsonl([doc])
+    try:
+      with self.assertRaises(IndexError):
+        visualization.visualize(path, document_index=5)
+    finally:
+      os.unlink(path)
 
 
 if __name__ == "__main__":

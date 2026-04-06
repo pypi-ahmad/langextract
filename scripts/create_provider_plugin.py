@@ -173,7 +173,7 @@ from langextract_{package_name}.schema import {provider_name}Schema"""
 
 
         @lx.providers.registry.register({patterns_str}, priority=10)
-        class {provider_name}LanguageModel(lx.inference.BaseLanguageModel):
+        class {provider_name}LanguageModel(lx.core.base_model.BaseLanguageModel):
             """LangExtract provider for {provider_name}.
 
             This provider handles model IDs matching: {patterns}
@@ -206,7 +206,7 @@ from langextract_{package_name}.schema import {provider_name}Schema"""
                 """
                 for prompt in batch_prompts:{schema_infer}
                     result = f"Mock response for: {{prompt[:50]}}..."
-                    yield [lx.inference.ScoredOutput(score=1.0, output=result)]
+                    yield [lx.core.types.ScoredOutput(score=1.0, output=result)]
     ''')
 
   (package_dir / "provider.py").write_text(provider_content, encoding="utf-8")
@@ -301,8 +301,8 @@ def create_schema(
                 }}
 
             @property
-            def supports_strict_mode(self) -> bool:
-                """Whether this schema guarantees valid structured output.
+            def requires_raw_output(self) -> bool:
+                """Whether this schema outputs raw JSON without fence markers.
 
                 Returns:
                     True if the provider enforces valid JSON output.

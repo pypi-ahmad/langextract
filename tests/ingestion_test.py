@@ -673,6 +673,59 @@ class UrlTest(absltest.TestCase):
     self.assertEqual(normalized.metadata["backend"], "beautifulsoup")
     self.assertEqual(normalized.text, "downloaded text")
 
+  # ----- Regression: text URL vs binary URL boundary -----
+
+  @mock.patch("langextract.ingestion.requests.get")
+  def test_text_url_normalize_input_returns_url_source_type(self, mock_get):
+    """Text URL must still flow through the old text path unchanged."""
+    mock_response = mock.MagicMock()
+    mock_response.content = b"plain text from remote"
+    mock_response.headers = {"Content-Type": "text/plain"}
+    mock_response.raise_for_status = mock.MagicMock()
+    mock_get.return_value = mock_response
+
+    normalized = ingestion.normalize_input(
+        "https://example.com/notes.txt",
+    )
+
+    self.assertTrue(normalized.is_text)
+    self.assertEqual(normalized.source_type, ingestion.InputSourceType.URL)
+    self.assertEqual(normalized.text, "plain text from remote")
+    self.assertEqual(
+        normalized.metadata["url"], "https://example.com/notes.txt"
+    )
+
+  @mock.patch("langextract.ingestion.requests.get")
+  def test_remote_image_url_raises_unsupported(self, mock_get):
+    """Binary image URLs must be rejected — same guard as PDF URLs."""
+    mock_response = mock.MagicMock()
+    mock_response.content = b"\x89PNG"
+    mock_response.headers = {"Content-Type": "image/png"}
+    mock_response.raise_for_status = mock.MagicMock()
+    mock_get.return_value = mock_response
+
+    with self.assertRaisesRegex(
+        ingestion.UnsupportedIngestionError, "Download the file locally"
+    ):
+      ingestion.normalize("https://example.com/scan.png")
+
+  @mock.patch("langextract.ingestion.requests.get")
+  def test_remote_xlsx_url_raises_unsupported(self, mock_get):
+    """Binary spreadsheet URLs must be rejected — same guard as PDF URLs."""
+    mock_response = mock.MagicMock()
+    mock_response.content = b"PK\x03\x04"
+    mock_response.headers = {
+        "Content-Type": "application/vnd.openxmlformats-officedocument"
+        ".spreadsheetml.sheet"
+    }
+    mock_response.raise_for_status = mock.MagicMock()
+    mock_get.return_value = mock_response
+
+    with self.assertRaisesRegex(
+        ingestion.UnsupportedIngestionError, "Download the file locally"
+    ):
+      ingestion.normalize("https://example.com/data.xlsx")
+
 
 class ExceptionTest(absltest.TestCase):
 
@@ -981,6 +1034,79 @@ class IngestionOptionsValidationTest(absltest.TestCase):
     # pandas promotes int+float to float, so 42 → "42.0"
     self.assertIn('text="42.0"', result)
     self.assertIn('text="3.14"', result)
+
+
+# ---------------------------------------------------------------------------
+# Input type → content_kind matrix (mirrors README table)
+# ---------------------------------------------------------------------------
+
+
+class NormalizeContentKindMatrixTest(absltest.TestCase):
+  """Verify each input type normalizes to the documented content_kind."""
+
+  def test_plain_string_yields_text(self):
+    n = ingestion.normalize_input("hello")
+    self.assertTrue(n.is_text)
+
+  def test_utf8_bytes_yields_text(self):
+    n = ingestion.normalize_input(b"hello bytes")
+    self.assertTrue(n.is_text)
+
+  def test_dataframe_yields_text(self):
+    df = pd.DataFrame({"text": ["a"], "id": ["1"]})
+    n = ingestion.normalize_input(df)
+    self.assertTrue(n.is_text)
+
+  def test_record_list_yields_text(self):
+    n = ingestion.normalize_input([{"text": "a", "id": "1"}])
+    self.assertTrue(n.is_text)
+
+  def test_txt_path_yields_text(self):
+    with tempfile.NamedTemporaryFile(
+        suffix=".txt", mode="w", delete=False, encoding="utf-8"
+    ) as f:
+      f.write("file text")
+      path = pathlib.Path(f.name)
+    try:
+      n = ingestion.normalize_input(path)
+      self.assertTrue(n.is_text)
+    finally:
+      path.unlink()
+
+  def test_csv_path_yields_text(self):
+    with tempfile.NamedTemporaryFile(
+        suffix=".csv", mode="w", delete=False, encoding="utf-8"
+    ) as f:
+      f.write("text,id\nhello,1\n")
+      path = pathlib.Path(f.name)
+    try:
+      n = ingestion.normalize_input(path)
+      self.assertTrue(n.is_text)
+    finally:
+      path.unlink()
+
+  def test_single_document_yields_documents(self):
+    n = ingestion.normalize_input(data.Document(text="doc"))
+    self.assertFalse(n.is_text)
+    self.assertTrue(n.is_documents)
+
+  def test_document_list_yields_documents(self):
+    n = ingestion.normalize_input(
+        [data.Document(text="a"), data.Document(text="b")]
+    )
+    self.assertFalse(n.is_text)
+    self.assertTrue(n.is_documents)
+
+  @mock.patch("langextract.ingestion.requests.get")
+  def test_text_url_yields_text(self, mock_get):
+    resp = mock.MagicMock()
+    resp.content = b"remote text"
+    resp.headers = {"Content-Type": "text/plain"}
+    resp.raise_for_status = mock.MagicMock()
+    mock_get.return_value = resp
+
+    n = ingestion.normalize_input("https://example.com/notes.txt")
+    self.assertTrue(n.is_text)
 
 
 if __name__ == "__main__":

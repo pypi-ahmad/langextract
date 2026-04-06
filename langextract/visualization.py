@@ -420,6 +420,7 @@ def _build_visualization_html(
     color_map: dict[str, str],
     animation_speed: float = 1.0,
     show_legend: bool = True,
+    instance_id: str = '',
 ) -> str:
   """Builds the complete visualization HTML."""
   if not extractions:
@@ -448,6 +449,9 @@ def _build_visualization_html(
 
   js_data = json.dumps(extraction_data)
 
+  # Suffix for scoping HTML element IDs when multiple visualizations exist.
+  sfx = f'_{instance_id}' if instance_id else ''
+
   # Prepare pos_info_str safely for pytype for the f-string below
   first_extraction = extractions[0]
   assert (
@@ -461,25 +465,25 @@ def _build_visualization_html(
     <div class="lx-animated-wrapper">
       <div class="lx-attributes-panel">
         {legend_html}
-        <div id="attributesContainer"></div>
+        <div id="attributesContainer{sfx}"></div>
       </div>
-      <div class="lx-text-window" id="textWindow">
+      <div class="lx-text-window" id="textWindow{sfx}">
         {highlighted_text}
       </div>
       <div class="lx-controls">
         <div class="lx-button-row">
-          <button class="lx-control-btn" onclick="playPause()">▶️ Play</button>
-          <button class="lx-control-btn" onclick="prevExtraction()">⏮ Previous</button>
-          <button class="lx-control-btn" onclick="nextExtraction()">⏭ Next</button>
+          <button class="lx-control-btn" onclick="playPause{sfx}()">▶️ Play</button>
+          <button class="lx-control-btn" onclick="prevExtraction{sfx}()">⏮ Previous</button>
+          <button class="lx-control-btn" onclick="nextExtraction{sfx}()">⏭ Next</button>
         </div>
         <div class="lx-progress-container">
-          <input type="range" id="progressSlider" class="lx-progress-slider"
+          <input type="range" id="progressSlider{sfx}" class="lx-progress-slider"
                  min="0" max="{len(extractions)-1}" value="0"
-                 onchange="jumpToExtraction(this.value)">
+                 onchange="jumpToExtraction{sfx}(this.value)">
         </div>
         <div class="lx-status-text">
-          Entity <span id="entityInfo">1/{len(extractions)}</span> |
-          Pos <span id="posInfo">{pos_info_str}</span>
+          Entity <span id="entityInfo{sfx}">1/{len(extractions)}</span> |
+          Pos <span id="posInfo{sfx}">{pos_info_str}</span>
         </div>
       </div>
     </div>
@@ -492,21 +496,23 @@ def _build_visualization_html(
         let animationInterval = null;
         let animationSpeed = {animation_speed};
 
+        const wrapper = document.getElementById('textWindow{sfx}');
+
         function updateDisplay() {{
           const extraction = extractions[currentIndex];
           if (!extraction) return;
 
-          document.getElementById('attributesContainer').innerHTML = extraction.attributesHtml;
-          document.getElementById('entityInfo').textContent = (currentIndex + 1) + '/' + extractions.length;
-          document.getElementById('posInfo').textContent = '[' + extraction.startPos + '-' + extraction.endPos + ']';
-          document.getElementById('progressSlider').value = currentIndex;
+          document.getElementById('attributesContainer{sfx}').innerHTML = extraction.attributesHtml;
+          document.getElementById('entityInfo{sfx}').textContent = (currentIndex + 1) + '/' + extractions.length;
+          document.getElementById('posInfo{sfx}').textContent = '[' + extraction.startPos + '-' + extraction.endPos + ']';
+          document.getElementById('progressSlider{sfx}').value = currentIndex;
 
-          const playBtn = document.querySelector('.lx-control-btn');
+          const playBtn = wrapper.closest('.lx-animated-wrapper').querySelector('.lx-control-btn');
           if (playBtn) playBtn.textContent = isPlaying ? '⏸ Pause' : '▶️ Play';
 
-          const prevHighlight = document.querySelector('.lx-text-window .lx-current-highlight');
+          const prevHighlight = wrapper.querySelector('.lx-current-highlight');
           if (prevHighlight) prevHighlight.classList.remove('lx-current-highlight');
-          const currentSpan = document.querySelector('.lx-text-window span[data-idx="' + currentIndex + '"]');
+          const currentSpan = wrapper.querySelector('span[data-idx="' + currentIndex + '"]');
           if (currentSpan) {{
             currentSpan.classList.add('lx-current-highlight');
             currentSpan.scrollIntoView({{block: 'center', behavior: 'smooth'}});
@@ -539,10 +545,10 @@ def _build_visualization_html(
           updateDisplay();
         }}
 
-        window.playPause = playPause;
-        window.nextExtraction = nextExtraction;
-        window.prevExtraction = prevExtraction;
-        window.jumpToExtraction = jumpToExtraction;
+        window['playPause{sfx}'] = playPause;
+        window['nextExtraction{sfx}'] = nextExtraction;
+        window['prevExtraction{sfx}'] = prevExtraction;
+        window['jumpToExtraction{sfx}'] = jumpToExtraction;
 
         updateDisplay();
       }})();
@@ -557,6 +563,7 @@ def visualize(
     animation_speed: float = 1.0,
     show_legend: bool = True,
     gif_optimized: bool = True,
+    document_index: int | None = None,
 ) -> HTML | str:
   """Visualises extraction data as animated highlighted HTML.
 
@@ -567,12 +574,15 @@ def visualize(
       to colours.
     gif_optimized: If ``True``, applies GIF-optimized styling with larger fonts,
       better contrast, and improved dimensions for video capture.
+    document_index: For JSONL files containing multiple documents, render only
+      the document at this index (0-based).  When ``None`` (default), all
+      documents are rendered.
 
   Returns:
     An :class:`IPython.display.HTML` object if IPython is available, otherwise
     the generated HTML string.
   """
-  # Load document if it's a file path
+  # Load document(s) if it's a file path
   if isinstance(data_source, (str, pathlib.Path)):
     file_path = pathlib.Path(data_source)
     if not file_path.exists():
@@ -582,10 +592,44 @@ def visualize(
     if not documents:
       raise ValueError(f'No documents found in JSONL file: {file_path}')
 
-    annotated_doc = documents[0]  # Use first document
+    if document_index is not None:
+      if document_index < 0 or document_index >= len(documents):
+        raise IndexError(
+            f'document_index {document_index} out of range for '
+            f'{len(documents)} document(s).'
+        )
+      documents = [documents[document_index]]
   else:
-    annotated_doc = data_source
+    documents = [data_source]
 
+  html_parts: list[str] = [_VISUALIZATION_CSS]
+  for idx, annotated_doc in enumerate(documents):
+    instance_id = str(idx) if len(documents) > 1 else ''
+    html_parts.append(
+        _visualize_single(
+            annotated_doc,
+            animation_speed=animation_speed,
+            show_legend=show_legend,
+            gif_optimized=gif_optimized,
+            instance_id=instance_id,
+        )
+    )
+
+  full_html = '\n'.join(html_parts)
+  if HTML is not None and _is_jupyter():
+    return HTML(full_html)
+  return full_html
+
+
+def _visualize_single(
+    annotated_doc: data.AnnotatedDocument,
+    *,
+    animation_speed: float,
+    show_legend: bool,
+    gif_optimized: bool,
+    instance_id: str = '',
+) -> str:
+  """Renders a single AnnotatedDocument to HTML (without the shared CSS)."""
   if not annotated_doc or annotated_doc.text is None:
     raise ValueError('annotated_doc must contain text to visualise.')
 
@@ -596,14 +640,10 @@ def visualize(
   valid_extractions = _filter_valid_extractions(annotated_doc.extractions)
 
   if not valid_extractions:
-    empty_html = (
+    return (
         '<div class="lx-animated-wrapper"><p>No valid extractions to'
         ' animate.</p></div>'
     )
-    full_html = _VISUALIZATION_CSS + empty_html
-    if HTML is not None and _is_jupyter():
-      return HTML(full_html)
-    return full_html
 
   color_map = _assign_colors(valid_extractions)
 
@@ -613,9 +653,10 @@ def visualize(
       color_map,
       animation_speed,
       show_legend,
+      instance_id=instance_id,
   )
 
-  full_html = _VISUALIZATION_CSS + visualization_html
+  full_html = visualization_html
 
   # Apply GIF optimizations if requested
   if gif_optimized:
@@ -624,6 +665,4 @@ def visualize(
         'class="lx-animated-wrapper lx-gif-optimized"',
     )
 
-  if HTML is not None and _is_jupyter():
-    return HTML(full_html)
   return full_html

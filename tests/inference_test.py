@@ -20,6 +20,7 @@ pylint warnings are expected for test fixtures.
 """
 # pylint: disable=attribute-defined-outside-init
 
+import os
 from unittest import mock
 
 from absl.testing import absltest
@@ -371,6 +372,24 @@ class TestOllamaLanguageModel(absltest.TestCase):
 
     self.assertEqual(cm.exception.provider, "Ollama")
     self.assertIn("non-JSON", str(cm.exception))
+
+  def test_ollama_base_url_env_var_used_when_no_url_given(self):
+    """OLLAMA_BASE_URL env var should be used when model_url/base_url absent."""
+    with mock.patch.dict(
+        os.environ, {"OLLAMA_BASE_URL": "http://remote:11434"}
+    ):
+      model = ollama.OllamaLanguageModel(model_id="gemma2:2b")
+    self.assertEqual(model._model_url, "http://remote:11434")
+
+  def test_ollama_explicit_url_overrides_env_var(self):
+    """Explicit model_url must take precedence over OLLAMA_BASE_URL."""
+    with mock.patch.dict(
+        os.environ, {"OLLAMA_BASE_URL": "http://remote:11434"}
+    ):
+      model = ollama.OllamaLanguageModel(
+          model_id="gemma2:2b", model_url="http://custom:11434"
+      )
+    self.assertEqual(model._model_url, "http://custom:11434")
 
 
 class TestGeminiLanguageModel(absltest.TestCase):

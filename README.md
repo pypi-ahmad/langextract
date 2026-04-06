@@ -618,7 +618,6 @@ Install optional dependencies for additional input formats:
 pip install langextract[pdf]     # PDF parser family (pymupdf, pdfplumber, pypdf)
 pip install langextract[ocr]     # Wired OCR parser backends for images/scanned PDFs (paddleocr, pytesseract)
 pip install langextract[office]  # Wired Office backends (openpyxl, python-docx, docx2txt, python-pptx)
-pip install langextract[tables]  # Registered table backends; table_pdf extraction is not wired yet
 pip install langextract[html]    # Local HTML parsing plus the same parser libraries used for URLs
 pip install langextract[url]     # Alias focused on URL extraction; installs the same libraries as [html]
 pip install langextract[xlsx]    # Legacy alias for Excel/openpyxl support
@@ -664,12 +663,15 @@ export LANGEXTRACT_API_KEY="your-api-key-here"
 
 **Option 2: .env File (Recommended)**
 
-Add your API key to a `.env` file:
+Add your API key to a `.env` file (see [.env.example](.env.example)):
 
 ```bash
 # Add API key to .env file
 cat >> .env << 'EOF'
 LANGEXTRACT_API_KEY=your-api-key-here
+# Or use provider-specific keys:
+# GEMINI_API_KEY=your-gemini-key
+# OPENAI_API_KEY=your-openai-key
 EOF
 
 # Keep your API key secure

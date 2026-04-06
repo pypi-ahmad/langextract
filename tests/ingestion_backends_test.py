@@ -842,7 +842,6 @@ class PackagingExtrasTest(absltest.TestCase):
         "pdf",
         "ocr",
         "office",
-        "tables",
         "html",
         "full",
         "xlsx",
@@ -861,9 +860,6 @@ class PackagingExtrasTest(absltest.TestCase):
     self.assertTrue(any(dep.startswith("openpyxl") for dep in extras["office"]))
     self.assertTrue(
         any(dep.startswith("trafilatura") for dep in extras["html"])
-    )
-    self.assertTrue(
-        any(dep.startswith("camelot-py") for dep in extras["tables"])
     )
     self.assertTrue(any(dep.startswith("pytesseract") for dep in extras["ocr"]))
 

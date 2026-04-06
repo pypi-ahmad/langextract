@@ -84,6 +84,7 @@ Prerequisites:
 from __future__ import annotations
 
 import dataclasses
+import os
 from typing import Any, Iterator, Mapping, Sequence
 from urllib.parse import urljoin
 from urllib.parse import urlparse
@@ -174,7 +175,7 @@ class OllamaLanguageModel(base_model.BaseLanguageModel):
   def __init__(
       self,
       model_id: str,
-      model_url: str = _OLLAMA_DEFAULT_MODEL_URL,
+      model_url: str | None = None,
       base_url: str | None = None,  # Alias for model_url
       format_type: core_types.FormatType | None = None,
       structured_output_format: str | None = None,  # Deprecated
@@ -188,6 +189,8 @@ class OllamaLanguageModel(base_model.BaseLanguageModel):
       model_id: The Ollama model ID to use.
       model_url: URL for Ollama server (legacy parameter).
       base_url: Alternative parameter name for Ollama server URL.
+        Falls back to the ``OLLAMA_BASE_URL`` environment variable, then
+        ``http://localhost:11434``.
       format_type: Output format (JSON or YAML). Defaults to JSON.
       structured_output_format: DEPRECATED - use format_type instead.
       constraint: Schema constraints.
@@ -223,7 +226,12 @@ class OllamaLanguageModel(base_model.BaseLanguageModel):
       format_type = core_types.FormatType.JSON
 
     self._model = model_id
-    self._model_url = base_url or model_url or _OLLAMA_DEFAULT_MODEL_URL
+    self._model_url = (
+        base_url
+        or model_url
+        or os.environ.get('OLLAMA_BASE_URL')
+        or _OLLAMA_DEFAULT_MODEL_URL
+    )
     self.format_type = format_type
     self._constraint = constraint
 

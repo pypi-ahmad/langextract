@@ -397,7 +397,6 @@ _EXTRA_INSTALL_COMMANDS: dict[str, str] = {
     "pdf": 'pip install "langextract[pdf]"',
     "ocr": 'pip install "langextract[ocr]"',
     "office": 'pip install "langextract[office]"',
-    "tables": 'pip install "langextract[tables]"',
     "html": 'pip install "langextract[html]"',
     "xlsx": 'pip install "langextract[xlsx]"',
     "full": 'pip install "langextract[full]"',
@@ -428,7 +427,7 @@ _BACKENDS: tuple[IngestionBackend, ...] = (
         import_check="pdfplumber",
         status=BackendStatus.AVAILABLE,
         description="PDF text and layout extraction via pdfplumber.",
-        extras=("pdf", "tables"),
+        extras=("pdf",),
     ),
     IngestionBackend(
         category=FileCategory.READABLE_PDF,
@@ -447,7 +446,7 @@ _BACKENDS: tuple[IngestionBackend, ...] = (
         import_check="ocrmypdf",
         status=BackendStatus.REGISTERED,
         description="OCR scanned PDFs via ocrmypdf (Tesseract wrapper).",
-        extras=("ocr",),
+        extras=(),
     ),
     IngestionBackend(
         category=FileCategory.SCANNED_PDF,
@@ -495,7 +494,7 @@ _BACKENDS: tuple[IngestionBackend, ...] = (
         import_check="easyocr",
         status=BackendStatus.REGISTERED,
         description="OCR images via EasyOCR.",
-        extras=("ocr",),
+        extras=(),
     ),
     # ── table_pdf ─────────────────────────────────────────────────────
     IngestionBackend(
@@ -505,7 +504,7 @@ _BACKENDS: tuple[IngestionBackend, ...] = (
         import_check="pdfplumber",
         status=BackendStatus.REGISTERED,
         description="Table extraction from PDFs via pdfplumber.",
-        extras=("tables", "pdf"),
+        extras=("pdf",),
     ),
     IngestionBackend(
         category=FileCategory.TABLE_PDF,
@@ -514,7 +513,7 @@ _BACKENDS: tuple[IngestionBackend, ...] = (
         import_check="camelot",
         status=BackendStatus.REGISTERED,
         description="Table extraction from PDFs via Camelot.",
-        extras=("tables",),
+        extras=(),
     ),
     IngestionBackend(
         category=FileCategory.TABLE_PDF,
@@ -523,7 +522,7 @@ _BACKENDS: tuple[IngestionBackend, ...] = (
         import_check="tabula",
         status=BackendStatus.REGISTERED,
         description="Table extraction from PDFs via tabula-py.",
-        extras=("tables",),
+        extras=(),
     ),
     # ── docx ──────────────────────────────────────────────────────────
     IngestionBackend(

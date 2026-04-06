@@ -142,12 +142,12 @@ class CustomProviderSchema(lx.schema.BaseSchema):
     }
 
   @property
-  def supports_strict_mode(self) -> bool:
-    """Whether this schema guarantees valid structured output.
+  def requires_raw_output(self) -> bool:
+    """Whether the provider emits raw structured output.
 
     Returns:
-      True if the provider will emit valid JSON without needing
-      Markdown fences for extraction.
+      True when the provider outputs valid JSON directly, so the
+      resolver does not need to strip Markdown fence markers.
     """
     return self._strict_mode
 

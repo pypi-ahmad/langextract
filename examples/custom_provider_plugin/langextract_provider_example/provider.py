@@ -28,7 +28,7 @@ import langextract as lx
     r'^gemini',  # Matches Gemini model IDs (same as default provider)
 )
 @dataclasses.dataclass(init=False)
-class CustomGeminiProvider(lx.inference.BaseLanguageModel):
+class CustomGeminiProvider(lx.core.base_model.BaseLanguageModel):
   """Example custom LangExtract provider implementation.
 
   This demonstrates how to create a custom provider for LangExtract

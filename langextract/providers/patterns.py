@@ -23,11 +23,14 @@ GEMINI_PATTERNS = (r'^gemini',)
 GEMINI_PRIORITY = 10
 
 # OpenAI provider patterns
+# Official model IDs always use "gpt-" (with hyphen), so ^gpt-4 covers
+# gpt-4o, gpt-4.1, gpt-4.1-mini, etc. and ^gpt-5 covers gpt-5.4, gpt-5.4-mini, etc.
 OPENAI_PATTERNS = (
+    r'^gpt-3\.5',
     r'^gpt-4',
-    r'^gpt4\.',
     r'^gpt-5',
-    r'^gpt5\.',
+    r'^o[0-9]',
+    r'^chatgpt-',
 )
 OPENAI_PRIORITY = 10
 

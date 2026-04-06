@@ -31,7 +31,7 @@ custom_provider_plugin/
 @lx.providers.registry.register(
     r'^gemini',  # Pattern for model IDs this provider handles
 )
-class CustomGeminiProvider(lx.inference.BaseLanguageModel):
+class CustomGeminiProvider(lx.core.base_model.BaseLanguageModel):
     def __init__(self, model_id: str, **kwargs):
         # Initialize your backend client
 
@@ -70,7 +70,7 @@ class CustomProviderSchema(lx.schema.BaseSchema):
         }
 
     @property
-    def supports_strict_mode(self):
+    def requires_raw_output(self):
         # True = valid JSON output, no markdown fences needed
         return True
 ```
@@ -78,7 +78,7 @@ class CustomProviderSchema(lx.schema.BaseSchema):
 Then in your provider:
 
 ```python
-class CustomProvider(lx.inference.BaseLanguageModel):
+class CustomProvider(lx.core.base_model.BaseLanguageModel):
     @classmethod
     def get_schema_class(cls):
         return CustomProviderSchema  # Tell LangExtract about your schema

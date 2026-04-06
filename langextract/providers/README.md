@@ -154,7 +154,7 @@ import langextract as lx
     r'^gemini',                # Prefix: model_id="gemini-2.5-flash"
     r'^palm'                   # Legacy: model_id="palm-2"
 )
-class GeminiLanguageModel(lx.inference.BaseLanguageModel):
+class GeminiLanguageModel(lx.core.base_model.BaseLanguageModel):
     def __init__(self, model_id: str, api_key: str = None, **kwargs):
         # Initialize Gemini client
         ...
@@ -272,7 +272,7 @@ yourprovider = "langextract_yourprovider:YourProviderLanguageModel"
 #### ☐ **3. Implement Provider** (`provider.py`)
 - [ ] Import required modules
 - [ ] Add `@lx.providers.registry.register()` decorator with patterns
-- [ ] Inherit from `lx.inference.BaseLanguageModel`
+- [ ] Inherit from `lx.core.base_model.BaseLanguageModel`
 - [ ] Implement `__init__()` method
 - [ ] Implement `infer()` method returning `ScoredOutput` objects
 - [ ] Export class from `__init__.py`
@@ -351,7 +351,7 @@ import os
 import langextract as lx
 
 @lx.providers.registry.register(r'^mymodel', r'^custom', priority=10)
-class MyProviderLanguageModel(lx.inference.BaseLanguageModel):
+class MyProviderLanguageModel(lx.core.base_model.BaseLanguageModel):
     def __init__(self, model_id: str, api_key: str = None, **kwargs):
         super().__init__()
         self.model_id = model_id
@@ -363,7 +363,7 @@ class MyProviderLanguageModel(lx.inference.BaseLanguageModel):
         # Implement inference
         for prompt in batch_prompts:
             result = self.client.generate(prompt, **kwargs)
-            yield [lx.inference.ScoredOutput(score=1.0, output=result)]
+            yield [lx.core.types.ScoredOutput(score=1.0, output=result)]
 ```
 
 **Pattern Registration Explained:**
@@ -445,7 +445,7 @@ class MyProviderSchema(lx.schema.BaseSchema):
 
 ```python
 # langextract_myprovider/provider.py
-class MyProviderLanguageModel(lx.inference.BaseLanguageModel):
+class MyProviderLanguageModel(lx.core.base_model.BaseLanguageModel):
     def __init__(self, model_id: str, **kwargs):
         super().__init__()
         self.model_id = model_id
@@ -478,7 +478,7 @@ class MyProviderLanguageModel(lx.inference.BaseLanguageModel):
                 api_params['response_schema'] = self.response_schema
 
             result = self.client.generate(prompt, **api_params)
-            yield [lx.inference.ScoredOutput(score=1.0, output=result)]
+            yield [lx.core.types.ScoredOutput(score=1.0, output=result)]
 ```
 
 #### 3. Schema Usage
@@ -506,7 +506,7 @@ This approach should only be used for providers that benefit a large portion of 
 import langextract as lx
 
 @lx.providers.registry.register(r'^mymodel', r'^custom')
-class MyProviderLanguageModel(lx.inference.BaseLanguageModel):
+class MyProviderLanguageModel(lx.core.base_model.BaseLanguageModel):
     # Implementation same as above
 ```
 

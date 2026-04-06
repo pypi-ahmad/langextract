@@ -335,8 +335,7 @@ for _ext in _TEXT_EXTENSIONS:
 for _ext in _HTML_EXTENSIONS:
   _EXTENSION_CATEGORIES[_ext] = FileCategory.HTML
 _EXTENSION_CATEGORIES[".csv"] = FileCategory.CSV
-for _ext in (".xlsx", ".xls"):
-  _EXTENSION_CATEGORIES[_ext] = FileCategory.EXCEL
+_EXTENSION_CATEGORIES[".xlsx"] = FileCategory.EXCEL
 _EXTENSION_CATEGORIES[".docx"] = FileCategory.DOCX
 _EXTENSION_CATEGORIES[".doc"] = FileCategory.DOC
 _EXTENSION_CATEGORIES[".pptx"] = FileCategory.PPTX
